@@ -1,0 +1,299 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta content="stuff, to, help, search, engines, not" name="keywords">
+    <meta content="What this page is about." name="description">
+    <meta content="Display Webcam Stream" name="title">
+    <title>Display Webcam Stream</title>
+
+    <style>
+        #container {
+            margin: 0px auto;
+            width: 500px;
+            height: 375px;
+            border: 10px #333 solid;
+        }
+        
+        #videoElement {
+            width: 500px;
+            height: 375px;
+            background-color: #666;
+        }
+    </style>
+</head>
+
+<body>
+
+
+    <button onClick="captureBackground()"> Capture </button>
+    <!-- <button onClick="computeDiff()"> computeDiff </button>-->
+
+    <button onClick="configure('top')"> configure TOP </button>
+    <button onClick="configure('bottom')"> configure BOTOM </button>
+    <button onClick="configure('left')"> configure LEFT </button>
+    <button onClick="configure('right')"> configure RIGHT </button>
+    <button onClick="startCapturing()"> Start / Stop </button> Threshold <input id="threshold" value="50"></input> <br/> Action
+    <div id="result"></div>
+    <div id="container">
+        <video autoplay="true" id="videoElement">
+    </video>
+    </div>
+    <canvas id="background"> </canvas>
+    <canvas style="display:none" id="current"></canvas>
+    <canvas id="diff"></canvas>
+
+    <script>
+        var configuration = {};
+
+        function configure(value) {
+            data = computeDiff();
+            if (data) {
+                configuration[value] = {
+                    x: data.x,
+                    y: data.y
+                };
+                console.log(value + " configured " + data.x + " " + data.y);
+            }
+        }
+
+        // handle video display
+        var video = document.querySelector("#videoElement");
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia || navigator.oGetUserMedia;
+        if (navigator.getUserMedia) {
+            navigator.getUserMedia({
+                video: true
+            }, handleVideo, videoError);
+        }
+
+        function handleVideo(stream) {
+            console.log(stream)
+            //video.src = URL.createObjectURL(stream);
+            video.srcObject = stream
+        }
+
+        function videoError(e) {
+            // do something
+        }
+
+
+
+        function captureBackground() {
+            var canvas = document.getElementById('background');
+            canvas.width = 500;
+            canvas.height = 375;
+            var ctx = canvas.getContext('2d');
+            var video = document.querySelector("#videoElement");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            //  convertGray(ctx,canvas.width,canvas.height);
+            var dataURI = canvas.toDataURL('image/jpeg'); // can also use 'image/png'
+        }
+
+
+
+        function computeImageDiff(ctxBackground, ctx2, ctxWrite, width, height, threshold) {
+
+            myImage = ctxBackground.getImageData(0, 0, width, height);
+            myImage2 = ctx2.getImageData(0, 0, width, height);
+            // Loop through data.
+            for (var i = 0; i < width * height * 4; i += 4) {
+                var myRed = myImage.data[i];
+                var myGreen = myImage.data[i + 1];
+                var myBlue = myImage.data[i + 2];
+
+                var myRed2 = myImage2.data[i];
+                var myGreen2 = myImage2.data[i + 1];
+                var myBlue2 = myImage2.data[i + 2];
+
+                var computedDiffValueRed = Math.abs(myRed - myRed2)
+                var computedDiffValueGreen = Math.abs(myGreen - myGreen2)
+                var computedDiffValueBlue = Math.abs(myBlue - myBlue2);
+
+                returnValue = 255;
+                if (computedDiffValueRed > threshold ||
+                    computedDiffValueGreen > threshold ||
+                    computedDiffValueBlue > threshold ||
+                    (computedDiffValueRed + computedDiffValueBlue + computedDiffValueGreen) / 3 > threshold
+                ) {
+                    returnValue = 0;
+
+                } else {
+                    myImage.data[i] = myImage2.data[i];;
+                    myImage.data[i + 1] = myImage2.data[i + 1];;
+                    myImage.data[i + 2] = myImage2.data[i + 2];;
+                }
+
+                myImage2.data[i] = returnValue;
+                myImage2.data[i + 1] = returnValue;
+                myImage2.data[i + 2] = returnValue;
+            }
+            ctxWrite.putImageData(myImage2, 0, 0);
+            ctxBackground.putImageData(myImage, 0, 0);
+
+        }
+
+
+        function computeDiff() {
+            var canvas = document.getElementById('current');
+            var canvasBackground = document.getElementById('background');
+            var ctxBackground = canvasBackground.getContext('2d');
+            var canvasDiff = document.getElementById('diff');
+            var ctxDiff = canvasDiff.getContext('2d');
+            canvas.width = 500;
+            canvas.height = 375;
+            canvasDiff.width = 500;
+            canvasDiff.height = 375;
+            var ctx = canvas.getContext('2d');
+            var video = document.querySelector("#videoElement");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            //  convertGray(ctx,canvas.width,canvas.height);
+            computeImageDiff(ctxBackground, ctx, ctxDiff, canvas.width, canvas.height, document.getElementById("threshold").value);
+            var data = FindFirstBlock(ctxDiff, canvasDiff.width, canvasDiff.height);
+            if (data) {
+                //console.log(data);
+                ctxDiff.putImageData(data.myImage, 0, 0);
+                return data;
+            }
+            return false;
+        }
+
+
+        function computeIvalue(x, y, width, height) {
+            return (y * width + x) * 4;
+        }
+
+
+        function FindFirstBlock(ctx, width, height) {
+            myImage = ctx.getImageData(0, 0, width, height);
+            var found = false;
+            var xi = {};
+            for (y = 1; y < height - 1; y++) {
+                for (x = 0; x < width; x++) {
+                    if (myImage.data[computeIvalue(x - 1, y, width, height)] == 255 &&
+                        myImage.data[computeIvalue(x + 1, y, width, height)] == 255 &&
+                        myImage.data[computeIvalue(x, y - 1, width, height)] == 255 &&
+                        myImage.data[computeIvalue(x, y + 1, width, height)] == 255) {
+                        // erasing local pixel
+                        myImage.data[computeIvalue(x, y, width, height)] = 255;
+                        myImage.data[computeIvalue(x, y, width, height) + 1] = 255;
+                        myImage.data[computeIvalue(x, y, width, height) + 2] = 255;
+                    } else {
+                        if (!found &&
+                            myImage.data[computeIvalue(x - 1, y - 1, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x, y - 1, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x + 1, y - 1, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x - 1, y, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x, y, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x + 1, y, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x - 1, y + 1, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x, y + 1, width, height)] == 0 &&
+                            myImage.data[computeIvalue(x + 1, y + 1, width, height)] == 0) {
+                            found = true;
+                            xi.x = x;
+                            xi.y = y;
+                            //  console.log("FOUND ");
+                            //  console.log(xi);
+                        }
+                    }
+                }
+            }
+            if (found) {
+                for (y = 0; y < height; y++) {
+                    for (x = 0; x < width; x++) {
+                        if (y == xi.y || x == xi.x) {
+                            myImage.data[computeIvalue(x, y, width, height)] = 255;
+                            myImage.data[computeIvalue(x, y, width, height) + 1] = 0;
+                            myImage.data[computeIvalue(x, y, width, height) + 2] = 0;
+                        }
+                    }
+                }
+                return {
+                    x: xi.x,
+                    y: xi.y,
+                    myImage
+                };
+            }
+            return false;
+
+        }
+
+
+
+        var interval = null
+
+        function startCapturing() {
+            if (interval == null) {
+                interval = setInterval(
+                    function() {
+                        data = computeDiff();
+                        topy = configuration['top'].y;
+                        boty = configuration['bottom'].y;
+
+                        thresholdY = topy + (boty - topy) / 2;
+
+                        rightx = configuration['right'].x;
+                        leftx = configuration['left'].x;
+                        thresholdRight = rightx + (leftx - rightx) / 3;
+
+                        thresholdLeft = rightx + (leftx - rightx) * 2 / 3;
+
+                        //console.log("DEBUG "+thresholdY+" "+data.x);
+                        //console.log("DEBUG "+thresholdRight+" "+data.x+"  "+thresholdLeft);
+                        if (data.y > thresholdY) {
+                            document.getElementById('result').innerHTML = "AVANCE ";
+                        } else {
+                            document.getElementById('result').innerHTML = "STOP ";
+                        }
+                        if (data.x < thresholdRight) {
+                            document.getElementById('result').innerHTML += "DROITE ";
+                        } else if (data.x > thresholdLeft) {
+                            document.getElementById('result').innerHTML += "GAUCHE ";
+                        }
+
+                    }, 100);
+            } else {
+                clearInterval(interval);
+                interval = null;
+            }
+
+        }
+
+
+
+
+        function convertGray(ctx, width, height) {
+
+            myImage = ctx.getImageData(0, 0, width, height);
+            // Loop through data.
+            for (var i = 0; i < width * height * 4; i += 4) {
+                // First bytes are red bytes.
+                // Get red value.
+                var myRed = myImage.data[i];
+                // Second bytes are green bytes.
+                // Get green value.
+                var myGreen = myImage.data[i + 1];
+
+                // Third bytes are blue bytes.
+                // Get blue value.
+                var myBlue = myImage.data[i + 2];
+
+                // Fourth bytes are alpha bytes
+                // We don't care about alpha here.
+                // Add the three values and divide by three.
+                // Make it an integer.
+                myGray = parseInt((myRed + myGreen + myBlue) / 3);
+
+                // Assign average to red, green, and blue.
+                myImage.data[i] = myGray;
+                myImage.data[i + 1] = myGray;
+                myImage.data[i + 2] = myGray;
+            }
+            ctx.putImageData(myImage, 0, 0);
+
+        }
+    </script>
+</body>
+
+</html>
